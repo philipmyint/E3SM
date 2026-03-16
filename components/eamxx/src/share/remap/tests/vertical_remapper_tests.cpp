@@ -691,47 +691,58 @@ TEST_CASE ("log_linear_vertical_remapper") {
   //        Build and run log-linear remap  //
   // -------------------------------------- //
 
-  auto remap_loglin = std::make_shared<VerticalRemapper>(
-      src_grid, tgt_grid, false, false, VerticalRemapper::LogLinear);
-  remap_loglin->set_source_pressure(pmid_exp_src, VerticalRemapper::Midpoints);
-  remap_loglin->set_target_pressure(pmid_exp_tgt, VerticalRemapper::Midpoints);
-  remap_loglin->register_field(src_loglin, tgt_loglin);
-  remap_loglin->registration_ends();
-  remap_loglin->remap_fwd();
+  // Test two orderings: set_interp_type before and after set_source_pressure
+  for (bool set_type_first : {true, false}) {
+    tgt_loglin.deep_copy(0.0);
 
-  // -------------------------------------- //
-  //         Build and run linear remap     //
-  // -------------------------------------- //
-
-  auto remap_lin = std::make_shared<VerticalRemapper>(
-      src_grid, tgt_grid, false, false, VerticalRemapper::Linear);
-  remap_lin->set_source_pressure(pmid_lin_src, VerticalRemapper::Midpoints);
-  remap_lin->set_target_pressure(pmid_lin_tgt, VerticalRemapper::Midpoints);
-  remap_lin->register_field(src_lin, tgt_lin);
-  remap_lin->registration_ends();
-  remap_lin->remap_fwd();
-
-  // -------------------------------------- //
-  //         Compare results                //
-  // -------------------------------------- //
-
-  using namespace Catch::Matchers;
-  const Real tol = 100*std::numeric_limits<Real>::epsilon();
-
-  tgt_loglin.sync_to_host();
-  tgt_lin.sync_to_host();
-  const auto& l = tgt_loglin.get_header().get_identifier().get_layout();
-  const int ncols_out = l.dims().front();
-  const int nlevs_out = l.dims().back();
-  auto vloglin = tgt_loglin.get_view<const Real**,Host>();
-  auto vlin    = tgt_lin.get_view<const Real**,Host>();
-
-  for (int i=0; i<ncols_out; ++i) {
-    for (int k=0; k<nlevs_out; ++k) {
-      REQUIRE (std::abs(vloglin(i,k)-vlin(i,k)) <= tol*std::abs(vlin(i,k)) + tol);
+    auto remap_loglin = std::make_shared<VerticalRemapper>(src_grid, tgt_grid);
+    if (set_type_first) {
+      remap_loglin->set_interp_type(VerticalRemapper::LogLinear);
+      remap_loglin->set_source_pressure(pmid_exp_src, VerticalRemapper::Midpoints);
+      remap_loglin->set_target_pressure(pmid_exp_tgt, VerticalRemapper::Midpoints);
+    } else {
+      remap_loglin->set_source_pressure(pmid_exp_src, VerticalRemapper::Midpoints);
+      remap_loglin->set_target_pressure(pmid_exp_tgt, VerticalRemapper::Midpoints);
+      remap_loglin->set_interp_type(VerticalRemapper::LogLinear);
     }
-  }
-  print (" -> log-linear matches linear with q coords ... done!\n",comm);
+    remap_loglin->register_field(src_loglin, tgt_loglin);
+    remap_loglin->registration_ends();
+    remap_loglin->remap_fwd();
+
+    // -------------------------------------- //
+    //         Build and run linear remap     //
+    // -------------------------------------- //
+
+    auto remap_lin = std::make_shared<VerticalRemapper>(src_grid, tgt_grid);
+    remap_lin->set_source_pressure(pmid_lin_src, VerticalRemapper::Midpoints);
+    remap_lin->set_target_pressure(pmid_lin_tgt, VerticalRemapper::Midpoints);
+    remap_lin->register_field(src_lin, tgt_lin);
+    remap_lin->registration_ends();
+    remap_lin->remap_fwd();
+
+    // -------------------------------------- //
+    //         Compare results                //
+    // -------------------------------------- //
+
+    using namespace Catch::Matchers;
+    const Real tol = 100*std::numeric_limits<Real>::epsilon();
+
+    tgt_loglin.sync_to_host();
+    tgt_lin.sync_to_host();
+    const auto& l = tgt_loglin.get_header().get_identifier().get_layout();
+    const int ncols_out = l.dims().front();
+    const int nlevs_out = l.dims().back();
+    auto vloglin = tgt_loglin.get_view<const Real**,Host>();
+    auto vlin    = tgt_lin.get_view<const Real**,Host>();
+
+    for (int i=0; i<ncols_out; ++i) {
+      for (int k=0; k<nlevs_out; ++k) {
+        REQUIRE (std::abs(vloglin(i,k)-vlin(i,k)) <= tol*std::abs(vlin(i,k)) + tol);
+      }
+    }
+    print (" -> log-linear matches linear with q coords (set_type_first=%s) ... done!\n",
+           comm, set_type_first ? "true" : "false");
+  } // for set_type_first
 
   // Clean up scorpio stuff
   scorpio::finalize_subsystem();

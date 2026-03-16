@@ -50,9 +50,8 @@ create_tgt_grid (const grid_ptr_type& src_grid,
 VerticalRemapper::
 VerticalRemapper (const grid_ptr_type& src_grid,
                   const std::string& map_file,
-                  const bool src_int_same_as_mid,
-                  const InterpType itype)
- : VerticalRemapper(src_grid,create_tgt_grid(src_grid,map_file),src_int_same_as_mid,true,itype)
+                  const bool src_int_same_as_mid)
+ : VerticalRemapper(src_grid,create_tgt_grid(src_grid,map_file),src_int_same_as_mid,true)
 {
   set_target_pressure (m_tgt_grid->get_geometry_data("p_levs"),Both);
 }
@@ -61,11 +60,9 @@ VerticalRemapper::
 VerticalRemapper (const grid_ptr_type& src_grid,
                   const grid_ptr_type& tgt_grid,
                   const bool src_int_same_as_mid,
-                  const bool tgt_int_same_as_mid,
-                  const InterpType itype)
+                  const bool tgt_int_same_as_mid)
  : m_src_int_same_as_mid(src_int_same_as_mid)
  , m_tgt_int_same_as_mid(tgt_int_same_as_mid)
- , m_interp_type(itype)
 {
   set_name("Vertical " + tgt_grid->name());
 
@@ -89,6 +86,32 @@ set_extrapolation_type (const ExtrapType etype, const TopBot where)
   if (where & Bot) {
     m_etype_bot = etype;
   }
+}
+
+void VerticalRemapper::
+set_interp_type (const InterpType itype)
+{
+  if (itype == m_interp_type) return;
+
+  // Transform any already-stored pressure fields to match the new interp type
+  auto transform = [&](Field& f) {
+    if (not f.is_allocated()) return;
+    if (itype == LogLinear) {
+      // Linear -> LogLinear: store log(p) instead of p
+      f = log_pressure(f);
+    } else {
+      // LogLinear -> Linear: recover raw p from stored log(p)
+      EKAT_REQUIRE_MSG (itype == Linear,
+          "[VerticalRemapper::set_interp_type] Unrecognized interpolation type.\n");
+      f = exp_pressure(f);
+    }
+  };
+  transform(m_src_pmid);
+  transform(m_src_pint);
+  transform(m_tgt_pmid);
+  transform(m_tgt_pint);
+
+  m_interp_type = itype;
 }
 
 void VerticalRemapper::
@@ -190,6 +213,38 @@ log_pressure (const Field& p) const
   }
   Kokkos::fence();
   return log_p;
+}
+
+Field VerticalRemapper::
+exp_pressure (const Field& p) const
+{
+  // Clone the field: deep copies device data, then syncs to host
+  auto exp_p = p.clone("exp_" + p.name());
+
+  const auto& layout = exp_p.get_header().get_identifier().get_layout();
+  const int nlevs = layout.dims().back();
+
+  // Apply exp element-wise on device
+  if (exp_p.rank()==1) {
+    auto v = exp_p.get_view<Real*>();
+    Kokkos::parallel_for("VerticalRemapper::exp_pressure",
+                         Kokkos::RangePolicy<>(0,nlevs),
+                         KOKKOS_LAMBDA(int k) {
+      v(k) = Kokkos::exp(v(k));
+    });
+  } else { // rank == 2
+    const int ncols = layout.dims().front();
+    auto v = exp_p.get_view<Real**>();
+    Kokkos::parallel_for("VerticalRemapper::exp_pressure",
+                         Kokkos::RangePolicy<>(0,ncols*nlevs),
+                         KOKKOS_LAMBDA(int idx) {
+      const int i = idx / nlevs;
+      const int k = idx % nlevs;
+      v(i,k) = Kokkos::exp(v(i,k));
+    });
+  }
+  Kokkos::fence();
+  return exp_p;
 }
 
 void VerticalRemapper::

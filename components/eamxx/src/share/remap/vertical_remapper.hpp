@@ -42,18 +42,21 @@ public:
 
   VerticalRemapper (const grid_ptr_type& src_grid,
                     const std::string& map_file,
-                    const bool src_int_same_as_mid = false,
-                    const InterpType itype = Linear);
+                    const bool src_int_same_as_mid = false);
 
   VerticalRemapper (const grid_ptr_type& src_grid,
                     const grid_ptr_type& tgt_grid,
                     const bool src_int_same_as_mid = false,
-                    const bool tgt_int_same_as_mid = false,
-                    const InterpType itype = Linear);
+                    const bool tgt_int_same_as_mid = false);
 
   ~VerticalRemapper () = default;
 
   void set_extrapolation_type (const ExtrapType etype, const TopBot where = TopAndBot);
+
+  // Set the interpolation type. If pressure fields are already set, this method
+  // will re-transform them: Linear->LogLinear applies log to stored pressures,
+  // LogLinear->Linear applies exp to recover raw pressure values.
+  void set_interp_type (const InterpType itype);
 
   void set_source_pressure (const Field& p, const ProfileType ptype);
   void set_target_pressure (const Field& p, const ProfileType ptype);
@@ -86,8 +89,10 @@ protected:
 
   void set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType ptype);
 
-  // If m_interp_type==LogLinear, clone p and return a field with log(p) values
+  // Clone p and return a field with log(p) values
   Field log_pressure (const Field& p) const;
+  // Clone p and return a field with exp(p) values
+  Field exp_pressure (const Field& p) const;
 
   FieldLayout create_layout (const FieldLayout& from_layout,
                              const std::shared_ptr<const AbstractGrid>& to_grid) const override;
