@@ -13,6 +13,7 @@
 #include <ekat_pack_utils.hpp>
 #include <ekat_pack_kokkos.hpp>
 
+#include <cmath>
 #include <numeric>
 
 namespace scream
@@ -49,8 +50,9 @@ create_tgt_grid (const grid_ptr_type& src_grid,
 VerticalRemapper::
 VerticalRemapper (const grid_ptr_type& src_grid,
                   const std::string& map_file,
-                  const bool src_int_same_as_mid)
- : VerticalRemapper(src_grid,create_tgt_grid(src_grid,map_file),src_int_same_as_mid,true)
+                  const bool src_int_same_as_mid,
+                  const InterpType itype)
+ : VerticalRemapper(src_grid,create_tgt_grid(src_grid,map_file),src_int_same_as_mid,true,itype)
 {
   set_target_pressure (m_tgt_grid->get_geometry_data("p_levs"),Both);
 }
@@ -59,9 +61,11 @@ VerticalRemapper::
 VerticalRemapper (const grid_ptr_type& src_grid,
                   const grid_ptr_type& tgt_grid,
                   const bool src_int_same_as_mid,
-                  const bool tgt_int_same_as_mid)
+                  const bool tgt_int_same_as_mid,
+                  const InterpType itype)
  : m_src_int_same_as_mid(src_int_same_as_mid)
  , m_tgt_int_same_as_mid(tgt_int_same_as_mid)
+ , m_interp_type(itype)
 {
   set_name("Vertical " + tgt_grid->name());
 
@@ -121,15 +125,18 @@ set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType p
   const auto vtag = p_layout.tags().back();
   const auto vdim = p_layout.dims().back();
 
+  // For log-linear interpolation, clone the pressure field and store log(p)
+  const Field p_stored = (m_interp_type==LogLinear) ? log_pressure(p) : p;
+
   FieldTag expected_tag = FieldTag::Invalid;
   int      expected_dim = -1;
   if (ptype==Midpoints or ptype==Both) {
     expected_tag = LEV;
     expected_dim = nlevs;
     if (src) {
-      m_src_pmid = p;
+      m_src_pmid = p_stored;
     } else {
-      m_tgt_pmid = p;
+      m_tgt_pmid = p_stored;
     }
     m_mid_packs_supported &= pack_compatible;
   }
@@ -137,11 +144,11 @@ set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType p
     if (src) {
       expected_tag = m_src_int_same_as_mid ? LEV : ILEV;
       expected_dim = m_src_int_same_as_mid ? nlevs : nlevs+1;
-      m_src_pint = p;
+      m_src_pint = p_stored;
     } else {
       expected_tag = m_tgt_int_same_as_mid ? LEV : ILEV;
       expected_dim = m_tgt_int_same_as_mid ? nlevs : nlevs+1;
-      m_tgt_pint = p;
+      m_tgt_pint = p_stored;
     }
     m_int_packs_supported &= pack_compatible;
   }
@@ -151,6 +158,38 @@ set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType p
       "  - layout: " + p_layout.to_string() + "\n"
       "  - expected last layout tag: " + e2str(expected_tag) + "\n"
       "  - expected last layout dim: " + std::to_string(expected_dim) + "\n");
+}
+
+Field VerticalRemapper::
+log_pressure (const Field& p) const
+{
+  // Clone the field: deep copies device data, then syncs to host
+  auto log_p = p.clone("log_" + p.name());
+
+  const auto& layout = log_p.get_header().get_identifier().get_layout();
+  const int nlevs = layout.dims().back();
+
+  // Apply log element-wise on device
+  if (log_p.rank()==1) {
+    auto v = log_p.get_view<Real*>();
+    Kokkos::parallel_for("VerticalRemapper::log_pressure",
+                         Kokkos::RangePolicy<>(0,nlevs),
+                         KOKKOS_LAMBDA(int k) {
+      v(k) = Kokkos::log(v(k));
+    });
+  } else { // rank == 2
+    const int ncols = layout.dims().front();
+    auto v = log_p.get_view<Real**>();
+    Kokkos::parallel_for("VerticalRemapper::log_pressure",
+                         Kokkos::RangePolicy<>(0,ncols*nlevs),
+                         KOKKOS_LAMBDA(int idx) {
+      const int i = idx / nlevs;
+      const int k = idx % nlevs;
+      v(i,k) = Kokkos::log(v(i,k));
+    });
+  }
+  Kokkos::fence();
+  return log_p;
 }
 
 void VerticalRemapper::

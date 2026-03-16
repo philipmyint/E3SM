@@ -35,14 +35,21 @@ public:
     Both
   };
 
+  enum InterpType {
+    Linear,     // Standard linear interpolation
+    LogLinear   // Log-linear interpolation (pressure coordinates are log-transformed)
+  };
+
   VerticalRemapper (const grid_ptr_type& src_grid,
                     const std::string& map_file,
-                    const bool src_int_same_as_mid = false);
+                    const bool src_int_same_as_mid = false,
+                    const InterpType itype = Linear);
 
   VerticalRemapper (const grid_ptr_type& src_grid,
                     const grid_ptr_type& tgt_grid,
                     const bool src_int_same_as_mid = false,
-                    const bool tgt_int_same_as_mid = false);
+                    const bool tgt_int_same_as_mid = false,
+                    const InterpType itype = Linear);
 
   ~VerticalRemapper () = default;
 
@@ -78,6 +85,10 @@ public:
 protected:
 
   void set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType ptype);
+
+  // If m_interp_type==LogLinear, clone p and return a field with log(p) values
+  Field log_pressure (const Field& p) const;
+
   FieldLayout create_layout (const FieldLayout& from_layout,
                              const std::shared_ptr<const AbstractGrid>& to_grid) const override;
 
@@ -132,6 +143,9 @@ protected:
   // Extrapolation settings at top/bottom. Default to P0 extrapolation
   ExtrapType            m_etype_top = P0;
   ExtrapType            m_etype_bot = P0;
+
+  // Interpolation type: linear or log-linear
+  InterpType            m_interp_type = Linear;
 
   // We need to remap mid/int fields separately, and we want to use packs if possible,
   // so we need to divide input fields into 4 separate categories
