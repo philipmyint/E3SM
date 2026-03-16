@@ -211,6 +211,16 @@ AtmosphereOutput::AtmosphereOutput(const ekat::Comm &comm, const ekat::Parameter
     auto p_mid = fm_model->get_field("p_mid");
     auto p_int = fm_model->get_field("p_int");
     auto vert_remapper = std::make_shared<VerticalRemapper>(fm_model->get_grid(),vert_remap_file);
+    if (params.isParameter("vert_remap_type")) {
+      const auto rtype = params.get<std::string>("vert_remap_type");
+      EKAT_REQUIRE_MSG (rtype=="linear" or rtype=="log-linear",
+          "Error! Invalid value for 'vert_remap_type'.\n"
+          "  - input value: " + rtype + "\n"
+          "  - valid values: linear, log-linear\n");
+      if (rtype=="log-linear") {
+        vert_remapper->set_interp_type(VerticalRemapper::LogLinear);
+      }
+    }
     vert_remapper->set_source_pressure (p_mid,p_int);
     vert_remapper->set_extrapolation_type(VerticalRemapper::Mask); // both Top AND Bot
     m_vert_remapper = vert_remapper;
