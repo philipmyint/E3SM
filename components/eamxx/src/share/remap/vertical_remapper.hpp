@@ -89,11 +89,6 @@ protected:
 
   void set_pressure (const Field& p, const std::string& src_or_tgt, const ProfileType ptype);
 
-  // Clone p and return a field with log(p) values
-  Field log_pressure (const Field& p) const;
-  // Clone p and return a field with exp(p) values
-  Field exp_pressure (const Field& p) const;
-
   FieldLayout create_layout (const FieldLayout& from_layout,
                              const std::shared_ptr<const AbstractGrid>& to_grid) const override;
 
@@ -104,6 +99,11 @@ protected:
 #ifdef KOKKOS_ENABLE_CUDA
 public:
 #endif
+  // Clone p and return a field with log(p) values
+  Field log_pressure (const Field& p) const;
+  // Clone p and return a field with exp(p) values
+  Field exp_pressure (const Field& p) const;
+
   template<int N>
   void apply_vertical_interpolation (const ekat::LinInterp<Real,N>& lin_interp,
                                      const Field& f_src, const Field& f_tgt,
