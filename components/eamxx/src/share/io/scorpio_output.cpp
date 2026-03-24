@@ -206,10 +206,7 @@ AtmosphereOutput::AtmosphereOutput(const ekat::Comm &comm, const ekat::Parameter
   // Setup remappers - if needed
   auto grid_after_vr = fm_grid;
   // Read the vertical interpolation type once; used for both vert remapping and diagnostics.
-  // Support legacy "vert_remap_type" as a fallback for backward compatibility.
-  m_vert_interp_type = params.isParameter("vert_interpolation_type")
-      ? params.get<std::string>("vert_interpolation_type")
-      : params.get<std::string>("vert_remap_type","log-linear");
+  m_vert_interp_type = params.get<std::string>("vert_interpolation_type","log-linear");
   EKAT_REQUIRE_MSG (m_vert_interp_type=="linear" or m_vert_interp_type=="log-linear",
       "Error! Invalid value for 'vert_interpolation_type'.\n"
       "  - input value: " + m_vert_interp_type + "\n"
