@@ -205,21 +205,23 @@ AtmosphereOutput::AtmosphereOutput(const ekat::Comm &comm, const ekat::Parameter
 
   // Setup remappers - if needed
   auto grid_after_vr = fm_grid;
+  // Read the vertical interpolation type once; used for both vert remapping and diagnostics.
+  // Support legacy "vert_remap_type" as a fallback for backward compatibility.
+  m_vert_interp_type = params.isParameter("vert_interpolation_type")
+      ? params.get<std::string>("vert_interpolation_type")
+      : params.get<std::string>("vert_remap_type","log-linear");
+  EKAT_REQUIRE_MSG (m_vert_interp_type=="linear" or m_vert_interp_type=="log-linear",
+      "Error! Invalid value for 'vert_interpolation_type'.\n"
+      "  - input value: " + m_vert_interp_type + "\n"
+      "  - valid values: linear, log-linear\n");
   if (use_vertical_remap_from_file) {
     // We build a remapper, to remap fields from the fm grid to the io grid
     auto vert_remap_file   = params.get<std::string>("vertical_remap_file");
     auto p_mid = fm_model->get_field("p_mid");
     auto p_int = fm_model->get_field("p_int");
     auto vert_remapper = std::make_shared<VerticalRemapper>(fm_model->get_grid(),vert_remap_file);
-    if (params.isParameter("vert_remap_type")) {
-      const auto rtype = params.get<std::string>("vert_remap_type");
-      EKAT_REQUIRE_MSG (rtype=="linear" or rtype=="log-linear",
-          "Error! Invalid value for 'vert_remap_type'.\n"
-          "  - input value: " + rtype + "\n"
-          "  - valid values: linear, log-linear\n");
-      if (rtype=="log-linear") {
-        vert_remapper->set_interp_type(VerticalRemapper::LogLinear);
-      }
+    if (m_vert_interp_type=="log-linear") {
+      vert_remapper->set_interp_type(VerticalRemapper::LogLinear);
     }
     vert_remapper->set_source_pressure (p_mid,p_int);
     vert_remapper->set_extrapolation_type(VerticalRemapper::Mask); // both Top AND Bot
@@ -1142,7 +1144,7 @@ process_requested_fields()
         auto& diag = m_diag_repo[name];
         if (not diag) {
           // First time we run into this diag. Create it
-          diag = create_diagnostic(name,fm_model->get_grid());
+          diag = create_diagnostic(name,fm_model->get_grid(),m_vert_interp_type);
         }
         // Add its deps to the list of fields to process (if not already in fm_model)
         bool deps_met = true;

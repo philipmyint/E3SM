@@ -360,7 +360,7 @@ TEST_CASE("io_remap_test","io_remap_test")
 
   OutputManager om_log_vert;
   auto log_vert_params = set_output_params("remap_log_vertical",log_remap_filename,-1,true,false);
-  log_vert_params.set<std::string>("vert_remap_type","log-linear");
+  log_vert_params.set<std::string>("vert_interpolation_type","log-linear");
   om_log_vert.initialize(io_comm,log_vert_params,t0,false);
   om_log_vert.setup(fm_log,gm->get_grid_names());
   io_comm.barrier();
