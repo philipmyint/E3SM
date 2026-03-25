@@ -247,6 +247,7 @@ TEST_CASE("io_remap_test","io_remap_test")
 
   print ("    -> vertical remap ... \n",io_comm);
   auto vert_remap_control = set_output_params("remap_vertical",remap_filename,p_ref,true,false);
+  vert_remap_control.set<std::string>("vert_interpolation_type","linear");
   om_vert.initialize(io_comm,vert_remap_control,t0,false);
   om_vert.setup(field_manager,gm->get_grid_names());
   io_comm.barrier();
@@ -267,6 +268,7 @@ TEST_CASE("io_remap_test","io_remap_test")
 
   print ("    -> vertical-horizontal remap ... \n",io_comm);
   auto vert_horiz_remap_control = set_output_params("remap_vertical_horizontal",remap_filename,p_ref,true,true);
+  vert_horiz_remap_control.set<std::string>("vert_interpolation_type","linear");
   om_vert_horiz.initialize(io_comm,vert_horiz_remap_control,t0,false);
   om_vert_horiz.setup(field_manager,gm->get_grid_names());
   io_comm.barrier();
