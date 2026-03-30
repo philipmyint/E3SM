@@ -275,16 +275,42 @@ setup_time_database (const strvec_t& input_files,
         " - file name: " + fname + "\n");
       scorpio::mark_dim_as_time(fname,"time");
     }
-    auto file_times = scorpio::get_all_times(fname);
-    EKAT_REQUIRE_MSG (file_times.size()>0,
-        "[DataInterpolation] Error! Input file contains no time variable.\n"
+
+    const bool has_time_var = scorpio::has_var(fname,"time");
+    const bool has_date_var = scorpio::has_var(fname,"date");
+    EKAT_REQUIRE_MSG (has_time_var or has_date_var,
+        "[DataInterpolation] Error! Input file contains neither a 'time' nor a 'date' variable.\n"
         " - file name: " + fname + "\n");
 
-    auto t_ref = ref_ts.is_valid() ? ref_ts : read_timestamp (fname,"reference_time_stamp");
+    const int ntimes = scorpio::get_time_len(fname);
+    EKAT_REQUIRE_MSG (ntimes>0,
+        "[DataInterpolation] Error! Input file contains no time slices.\n"
+        " - file name: " + fname + "\n");
 
-    times.emplace_back();
-    for (const auto& t : file_times) {
-      times.back().push_back(t_ref + t*constants::seconds_per_day);
+    if (has_date_var and not has_time_var) {
+      times.emplace_back();
+
+      for (int i=0; i<ntimes; ++i) {
+        double date_val;
+        scorpio::read_var(fname,"date",&date_val,i);
+
+        int date_int = static_cast<int>(std::round(date_val));
+        int yyyy = date_int / 10000;
+        int mm   = (date_int % 10000) / 100;
+        int dd   = date_int % 100;
+
+        times.back().push_back(util::TimeStamp(yyyy,mm,dd,0,0,0));
+      }
+    } else {
+      auto t_ref = ref_ts.is_valid() ? ref_ts : read_timestamp(fname,"reference_time_stamp");
+
+      times.emplace_back();
+
+      for (int i=0; i<ntimes; ++i) {
+        double t;
+        scorpio::read_var(fname,"time",&t,i);
+        times.back().push_back(t_ref + t*constants::seconds_per_day);
+      }
     }
     scorpio::release_file(fname);
 
